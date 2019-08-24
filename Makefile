@@ -1,6 +1,6 @@
 CC = gcc
-CFLAGS = -I/home/dev/.local/include -O2 -Wall -Wextra
-LDFLAGS = -s -static /home/dev/.local/lib/libcrypto.a
+CFLAGS = -O2 -Wall -Wextra
+LDFLAGS = -static -lcrypto -s
 TARGET = cryptopen
 
 all: $(TARGET)
