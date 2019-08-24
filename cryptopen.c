@@ -1,13 +1,14 @@
 #include <err.h>
 #include <fcntl.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
 #include <termios.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/ioctl.h>
-#include <openssl/evp.h>
+#include <openssl/sha.h>
 #include <linux/fs.h>
 #include <linux/dm-ioctl.h>
 
@@ -17,8 +18,7 @@
 #define DM_CRYPT_ALG "aes-xts-plain64"
 #define DM_CONTROL_PATH "/dev/" DM_DIR "/" DM_CONTROL_NODE
 
-#define ITERATIONS 100000
-#define KEYSIZE 32
+#define KEYSIZE ((SHA256_DIGEST_LENGTH*2)+1) /* SHA sum in hex + NUL */
 
 struct cmd_func {
 	const char* name;
@@ -35,12 +35,10 @@ static const struct cmd_func cmd_list[] = {
 };
 
 static void
-pbkdf2(const char* str, size_t len, char* out)
+pass_to_masterkey(const char* str, size_t len, char* out)
 {
-        unsigned char hash[KEYSIZE];
-        const unsigned char salt[] = {0x88, 0x28, 0x8e, 0xcc, 0xf8, 0x7b, 0xd1, 0x2d, 0xeb, 0xb6, 0x21, 0x73, 0x6c, 0x5a, 0x1b, 0x50,
-                                      0x74, 0x00, 0x10, 0x8b, 0xe1, 0x4b, 0x7f, 0xf0, 0x4c, 0xdb, 0xef, 0x6e, 0x28, 0x4b, 0x56, 0xb7};
-        PKCS5_PBKDF2_HMAC(str, len, salt, sizeof(salt), ITERATIONS, EVP_sha256(), sizeof(hash), hash);
+        unsigned char hash[SHA256_DIGEST_LENGTH];
+        SHA256((unsigned char*)str, len, hash);
         for(unsigned i = 0; i < sizeof(hash); i++) {
                 sprintf(out, "%02x", hash[i]);
                 out += 2;
@@ -92,7 +90,7 @@ read_pass(char* hash)
 	if (sz > 0) {
 		if(buf[sz-1] == '\n')
 			--sz;
-		pbkdf2(buf, sz, hash);
+		pass_to_masterkey(buf, sz, hash);
 	}
 	explicit_bzero(buf, sizeof(buf));
 
@@ -130,7 +128,7 @@ cmd_open(int argc, char** argv)
 	spec->length = size;
 	strcpy(spec->target_type, "crypt");
 
-	char pass[KEYSIZE*2+1] = {0};
+	char pass[KEYSIZE] = {0};
 	if(read_pass(pass) == -1 || *pass == 0)
 		exit(1);
 
