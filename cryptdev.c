@@ -77,14 +77,13 @@ static int
 read_pass(char* hash)
 {
 	struct termios newtios, oldtios;
-	if (tcgetattr(0, &oldtios))
-		return -1;
+	tcgetattr(0, &oldtios);
 	newtios = oldtios;
-	newtios.c_lflag &= ~ECHO;
+	newtios.c_lflag &= ~(ECHO | ISIG);
+	newtios.c_lflag |= ECHONL | ICANON;
+	tcsetattr(0, TCSAFLUSH, &newtios);
 
-	if (tcsetattr(0, TCSADRAIN, &newtios))
-		return -1;
-
+	write(1, "Password: ", 10);
 	char buf[MAX_PASS_LEN] = {0};
 	ssize_t sz = read(0, buf, sizeof(buf));
 	if (sz > 0) {
@@ -94,9 +93,7 @@ read_pass(char* hash)
 	}
 	explicit_bzero(buf, sizeof(buf));
 
-	if (tcsetattr(0, TCSAFLUSH, &oldtios))
-		return -1;
-
+	tcsetattr(0, TCSAFLUSH, &oldtios);
 	return sz;
 }
 
@@ -161,12 +158,12 @@ cmd_close(int argc, char** argv)
         const char* name = argv[1];
         char buf[DM_CRYPT_BUF_SIZE];
         struct dm_ioctl* io = (struct dm_ioctl *)buf;
- 
+
 	ioctl_init(io, sizeof(buf), name);
 	if (ioctl(control_fd, DM_DEV_REMOVE, io))
 		err(1, "ioctl(DM_DEV_REMOVE)");
 
-	
+
 	char dev[256] = {0};
 	snprintf(dev, sizeof(dev)-1, "/dev/" DM_DIR "/%s", name);
 	unlink(dev);
