@@ -54,18 +54,6 @@ pass_to_masterkey(const char* str, size_t len, char* out)
 }
 
 static void
-ioctl_init(struct dm_ioctl* io, size_t size, const char* name)
-{
-	memset(io, 0, size);
-	io->data_size = size;
-	io->data_start = sizeof(*io);
-	io->version[0] = DM_VERSION_MAJOR;
-	io->version[1] = DM_VERSION_MINOR;
-	io->version[2] = DM_VERSION_PATCHLEVEL;
-	strncpy(io->name, name, sizeof(io->name)-1);
-}
-
-static void
 dm_init(struct dm_crypt *dm, const char *dm_name)
 {
 	memset(dm, 0, sizeof(*dm));
@@ -118,53 +106,51 @@ read_pass(char* hash)
 static void
 cmd_open(int argc, char** argv)
 {
-	if (argc < 3)
-		errx(1, "Usage: %s DEV NAME", argv[0]);
-
+	int ret;
 	__u64 size = 0;
+	char pass[KEYSIZE] = {0};
+	char dev[256];
 	const char* path = argv[1];
 	const char* name = argv[2];
-	char buf[DM_CRYPT_BUF_SIZE];
-	struct dm_ioctl* io = (struct dm_ioctl *) buf;
-	struct dm_target_spec* spec = (struct dm_target_spec*) &buf[sizeof(*io)];
-	char* params = buf + sizeof(*io) + sizeof(*spec);
+	struct dm_crypt dm;
+
+	if (argc < 3)
+		errx(1, "Usage: %s DEV NAME", argv[0]);
 
 	if (get_blk_size(path, &size))
 		err(1, "failed to get size of %s", path);
 	size >>= 9; /* Number of 512 byte blocks */
 
-	ioctl_init(io, sizeof(buf), name);
-	if (ioctl(control_fd, DM_DEV_CREATE, io) == -1)
+	dm_init(&dm, name);
+	if (ioctl(control_fd, DM_DEV_CREATE, &dm) == -1)
 		err(1, "ioctl(DM_DEV_CREATE)");
 
-	ioctl_init(io, sizeof(buf), name);
-	io->target_count = 1;
-	spec->sector_start = 0;
-	spec->length = size;
-	strcpy(spec->target_type, "crypt");
+	dm_init(&dm, name);
+	dm.io.target_count = 1;
+	dm.spec.sector_start = 0;
+	dm.spec.length = size;
+	strncpy(dm.spec.target_type, "crypt", sizeof(dm.spec.target_type) - 1);
 
-	char pass[KEYSIZE] = {0};
 	if(read_pass(pass) == -1 || *pass == 0)
 		exit(1);
 
-	sprintf(params, DM_CRYPT_ALG " %s 0 %s 0", pass, path);
-	int ret = ioctl(control_fd, DM_TABLE_LOAD, io);
+	snprintf(dm.param, sizeof(dm.param), DM_CRYPT_ALG " %s 0 %s 0", pass, path);
+	ret = ioctl(control_fd, DM_TABLE_LOAD, &dm);
 
 	/* Destroy key */
 	explicit_bzero(pass, sizeof(pass));
-	explicit_bzero(params, sizeof(params));
+	explicit_bzero(dm.param, sizeof(dm.param));
 
 	if (ret)
 		err(1, "ioctl(DM_TABLE_LOAD)");
 
-	ioctl_init(io, sizeof(buf), name);
-	if (ioctl(control_fd, DM_DEV_SUSPEND, io))
+	dm_init(&dm, name);
+	if (ioctl(control_fd, DM_DEV_SUSPEND, &dm))
 		err(1, "ioctl(DM_DEV_SUSPEND)");
 
 	/* Create device in /dev/mapper/ */
-	char dev[256] = {0};
-	snprintf(dev, sizeof(dev)-1, "/dev/" DM_DIR "/%s", name);
-	mknod(dev, S_IFBLK | 0600, io->dev);
+	snprintf(dev, sizeof(dev) - 1, "/dev/mapper/%s", name);
+	mknod(dev, S_IFBLK | 0600, dm.io.dev);
 }
 
 static void
