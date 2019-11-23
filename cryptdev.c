@@ -20,25 +20,13 @@
 
 #define KEYSIZE ((SHA256_DIGEST_LENGTH*2)+1) /* SHA sum in hex + NUL */
 
-struct cmd_func {
-	const char* name;
-	void (*func)(int,char**);
-};
-
 struct dm_crypt {
 	struct dm_ioctl io;
 	struct dm_target_spec spec;
 	char param[1024];
 };
 
-static void cmd_open(int argc, char** argv);
-static void cmd_close(int argc, char** argv);
-
-static int control_fd = -1;
-static const struct cmd_func cmd_list[] = {
-        {"open", cmd_open},
-        {"close", cmd_close},
-};
+static int control_fd;
 
 static void
 pass_to_masterkey(const char* str, size_t len, char* out)
@@ -175,24 +163,16 @@ int
 main(int argc, char** argv)
 {
 	if (argc < 2)
-		errx(1, "Usage: %s CMD [ARG]...", argv[0]);
+		errx(1, "usage: %s CMD [ARG]...", argv[0]);
 
-	struct cmd_func cmd = {0};
-	for (unsigned i = 0; i < ELEMS(cmd_list); i++) {
-		if(strcmp(argv[1], cmd_list[i].name) == 0)
-		{
-			cmd = cmd_list[i];
-			break;
-		}
-	}
-	if (!cmd.func)
-		errx(1, "%s: no such command", argv[1]);
+        if ((control_fd = open(DM_CONTROL_PATH, O_RDWR)) < 0)
+		err(1, "open " DM_CONTROL_PATH);
 
-        control_fd = open(DM_CONTROL_PATH, O_RDWR);
-        if (control_fd == -1)
-                err(1, "open " DM_CONTROL_PATH);
-
-	cmd.func(argc-1, &argv[1]);
-	close(control_fd);
-	return 0;
+	--argc, ++argv;
+	if (!strcmp(argv[0], "open"))
+		cmd_open(argc, argv);
+	else if(!strcmp(argv[0], "close"))
+		cmd_close(argc, argv);
+	else
+		errx(1, "unknown command: %s", argv[0]);
 }
