@@ -78,10 +78,8 @@ static void read_pass(char *buf, size_t size)
 
 static void cmd_open(int argc, char** argv)
 {
-	int ret;
 	uint64_t size = 0;
-	char rawpass[256], pass[65];
-	char dev[256];
+	char dev[256], rawpass[256], pass[65];
 	const char* path = argv[1];
 	const char* name = argv[2];
 	struct dm_crypt dm;
@@ -105,13 +103,7 @@ static void cmd_open(int argc, char** argv)
 	pass_to_masterkey(rawpass, pass);
 
 	snprintf(dm.param, sizeof(dm.param), "aes-xts-plain64 %s 0 %s 0", pass, path);
-	ret = ioctl(control_fd, DM_TABLE_LOAD, &dm);
-
-	/* Destroy key */
-	explicit_bzero(pass, sizeof(pass));
-	explicit_bzero(dm.param, sizeof(dm.param));
-
-	if (ret)
+	if (ioctl(control_fd, DM_TABLE_LOAD, &dm) < 0)
 		err(1, "ioctl(DM_TABLE_LOAD)");
 
 	dm_init(&dm, name);
