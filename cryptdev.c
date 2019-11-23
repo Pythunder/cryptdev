@@ -22,10 +22,10 @@ struct dm_crypt {
 
 static int control_fd;
 
-static void pass_to_masterkey(const char* str, size_t len, char* out)
+static void pass_to_masterkey(const char* str, char* out)
 {
         unsigned char hash[SHA256_DIGEST_LENGTH];
-        SHA256((unsigned char*)str, len, hash);
+        SHA256((unsigned char*)str, strlen(str), hash);
         for(unsigned i = 0; i < sizeof(hash); i++) {
                 sprintf(out, "%02x", hash[i]);
                 out += 2;
@@ -57,34 +57,32 @@ static void get_blk_size(const char* path, uint64_t* size)
 	close(fd);
 }
 
-static int read_pass(char* hash)
+static void read_pass(char *buf, size_t size)
 {
 	struct termios newtios, oldtios;
 	tcgetattr(0, &oldtios);
 	newtios = oldtios;
 	newtios.c_lflag &= ~(ECHO | ISIG);
-	newtios.c_lflag |= ECHONL | ICANON;
 	tcsetattr(0, TCSAFLUSH, &newtios);
 
 	write(1, "Password: ", 10);
-	char buf[256] = {0};
-	ssize_t sz = read(0, buf, sizeof(buf));
+	ssize_t sz = read(0, buf, size-1);
 	if (sz > 0) {
-		if(buf[sz-1] == '\n')
+		if (buf[sz-1] == '\n')
 			--sz;
-		pass_to_masterkey(buf, sz, hash);
-	}
-	explicit_bzero(buf, sizeof(buf));
+		buf[sz] = '\0';
+	} else
+		buf[0] = '\0';
+	write(1, "\n", 1);
 
 	tcsetattr(0, TCSAFLUSH, &oldtios);
-	return sz;
 }
 
 static void cmd_open(int argc, char** argv)
 {
 	int ret;
 	uint64_t size = 0;
-	char pass[KEYSIZE] = {0};
+	char rawpass[256], pass[KEYSIZE];
 	char dev[256];
 	const char* path = argv[1];
 	const char* name = argv[2];
@@ -106,8 +104,8 @@ static void cmd_open(int argc, char** argv)
 	dm.spec.length = size;
 	strncpy(dm.spec.target_type, "crypt", sizeof(dm.spec.target_type) - 1);
 
-	if(read_pass(pass) == -1 || *pass == 0)
-		exit(1);
+	read_pass(rawpass, sizeof(rawpass));
+	pass_to_masterkey(rawpass, pass);
 
 	snprintf(dm.param, sizeof(dm.param), "aes-xts-plain64 %s 0 %s 0", pass, path);
 	ret = ioctl(control_fd, DM_TABLE_LOAD, &dm);
