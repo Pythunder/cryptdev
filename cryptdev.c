@@ -45,7 +45,7 @@ static void dm_init(struct dm_crypt *dm, const char *dm_name)
 	strncpy(dm->io.name, dm_name, sizeof(dm->io.name) - 1);
 }
 
-static void get_blk_size(const char* path, __u64* size)
+static void get_blk_size(const char* path, uint64_t* size)
 {
 	int fd;
 
@@ -83,7 +83,7 @@ static int read_pass(char* hash)
 static void cmd_open(int argc, char** argv)
 {
 	int ret;
-	__u64 size = 0;
+	uint64_t size = 0;
 	char pass[KEYSIZE] = {0};
 	char dev[256];
 	const char* path = argv[1];
