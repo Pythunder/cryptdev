@@ -12,8 +12,6 @@
 #include <linux/fs.h>
 #include <linux/dm-ioctl.h>
 
-#define KEYSIZE ((SHA256_DIGEST_LENGTH*2)+1) /* SHA sum in hex + NUL */
-
 struct dm_crypt {
 	struct dm_ioctl io;
 	struct dm_target_spec spec;
@@ -82,7 +80,7 @@ static void cmd_open(int argc, char** argv)
 {
 	int ret;
 	uint64_t size = 0;
-	char rawpass[256], pass[KEYSIZE];
+	char rawpass[256], pass[65];
 	char dev[256];
 	const char* path = argv[1];
 	const char* name = argv[2];
