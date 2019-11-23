@@ -20,7 +20,7 @@ struct dm_crypt {
 
 static int control_fd;
 
-static void pass_to_masterkey(const char* str, char* out)
+static void hash_pass(const char *str, char *out)
 {
         unsigned char hash[SHA256_DIGEST_LENGTH];
         SHA256((unsigned char*)str, strlen(str), hash);
@@ -79,7 +79,7 @@ static void read_pass(char *buf, size_t size)
 static void cmd_open(int argc, char** argv)
 {
 	uint64_t size = 0;
-	char dev[256], rawpass[256], pass[65];
+	char dev[256], passwd[256], hash[65];
 	const char* path = argv[1];
 	const char* name = argv[2];
 	struct dm_crypt dm;
@@ -99,10 +99,10 @@ static void cmd_open(int argc, char** argv)
 	dm.spec.length = size;
 	strncpy(dm.spec.target_type, "crypt", sizeof(dm.spec.target_type) - 1);
 
-	read_pass(rawpass, sizeof(rawpass));
-	pass_to_masterkey(rawpass, pass);
+	read_pass(passwd, sizeof(passwd));
+	hash_pass(passwd, hash);
 
-	snprintf(dm.param, sizeof(dm.param), "aes-xts-plain64 %s 0 %s 0", pass, path);
+	snprintf(dm.param, sizeof(dm.param), "aes-xts-plain64 %s 0 %s 0", hash, path);
 	if (ioctl(control_fd, DM_TABLE_LOAD, &dm) < 0)
 		err(1, "ioctl(DM_TABLE_LOAD)");
 
