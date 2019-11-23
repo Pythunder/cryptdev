@@ -22,8 +22,7 @@ struct dm_crypt {
 
 static int control_fd;
 
-static void
-pass_to_masterkey(const char* str, size_t len, char* out)
+static void pass_to_masterkey(const char* str, size_t len, char* out)
 {
         unsigned char hash[SHA256_DIGEST_LENGTH];
         SHA256((unsigned char*)str, len, hash);
@@ -35,8 +34,7 @@ pass_to_masterkey(const char* str, size_t len, char* out)
 	explicit_bzero(hash, sizeof(hash));
 }
 
-static void
-dm_init(struct dm_crypt *dm, const char *dm_name)
+static void dm_init(struct dm_crypt *dm, const char *dm_name)
 {
 	memset(dm, 0, sizeof(*dm));
 	dm->io.data_size = sizeof(*dm);
@@ -59,8 +57,7 @@ static void get_blk_size(const char* path, __u64* size)
 	close(fd);
 }
 
-static int
-read_pass(char* hash)
+static int read_pass(char* hash)
 {
 	struct termios newtios, oldtios;
 	tcgetattr(0, &oldtios);
@@ -83,8 +80,7 @@ read_pass(char* hash)
 	return sz;
 }
 
-static void
-cmd_open(int argc, char** argv)
+static void cmd_open(int argc, char** argv)
 {
 	int ret;
 	__u64 size = 0;
@@ -132,8 +128,7 @@ cmd_open(int argc, char** argv)
 	mknod(dev, S_IFBLK | 0600, dm.io.dev);
 }
 
-static void
-cmd_close(int argc, char** argv)
+static void cmd_close(int argc, char** argv)
 {
 	struct dm_crypt dm;
 	char path[256];
@@ -150,8 +145,7 @@ cmd_close(int argc, char** argv)
 	unlink(path);
 }
 
-int
-main(int argc, char** argv)
+int main(int argc, char** argv)
 {
 	if (argc < 2)
 		errx(1, "usage: %s CMD [ARG]...", argv[0]);
