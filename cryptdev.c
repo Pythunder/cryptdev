@@ -47,18 +47,16 @@ dm_init(struct dm_crypt *dm, const char *dm_name)
 	strncpy(dm->io.name, dm_name, sizeof(dm->io.name) - 1);
 }
 
-static int
-get_blk_size(const char* path, __u64* size)
+static void get_blk_size(const char* path, __u64* size)
 {
-	int ret = 0;
-	int fd = open(path, O_RDONLY);
-	if (fd == -1)
-		return -1;
+	int fd;
 
-	ret = ioctl(fd, BLKGETSIZE64, size);
+	if ((fd = open(path, O_RDONLY)) < 0)
+		err(1, "open %s", path);
+
+	if (ioctl(fd, BLKGETSIZE64, size) < 0)
+		err(1, "ioctl(BLKGETSIZE64)");
 	close(fd);
-
-	return ret;
 }
 
 static int
@@ -99,8 +97,7 @@ cmd_open(int argc, char** argv)
 	if (argc < 3)
 		errx(1, "Usage: %s DEV NAME", argv[0]);
 
-	if (get_blk_size(path, &size))
-		err(1, "failed to get size of %s", path);
+	get_blk_size(path, &size);
 	size >>= 9; /* Number of 512 byte blocks */
 
 	dm_init(&dm, name);
