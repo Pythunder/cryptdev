@@ -1,14 +1,12 @@
-CC = gcc
-CFLAGS = -O2 -Wall -Wextra -fstack-protector-all -D_FORTIFY_SOURCE=2
-LDFLAGS = -Wl,-z,relro,-z,now -static -lcrypto -s
-TARGET = cryptdev
+CC = cc
+CFLAGS = -Wall -Wextra -Os
+LDFLAGS = -static -s -lcrypto
 
-all: $(TARGET)
-
-$(TARGET): cryptdev.c
-	$(CC) $(CFLAGS) $< $(LDFLAGS) -o $@
+all: cryptdev
+cryptdev: cryptdev.c
+	$(CC) -o $@ $^ $(CFLAGS) $(LDFLAGS)
 
 clean:
-	$(RM) $(TARGET)
+	rm -f cryptdev
 
 .PHONY: all clean
