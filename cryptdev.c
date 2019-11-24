@@ -76,16 +76,11 @@ static void read_pass(char *buf, size_t size)
 	tcsetattr(0, TCSAFLUSH, &oldtios);
 }
 
-static void cmd_open(int argc, char** argv)
+static void dm_open(const char *path, const char *name)
 {
 	uint64_t size = 0;
 	char dev[256], passwd[256], hash[65];
-	const char* path = argv[1];
-	const char* name = argv[2];
 	struct dm_crypt dm;
-
-	if (argc < 3)
-		errx(1, "Usage: %s DEV NAME", argv[0]);
 
 	get_blk_size(path, &size);
 
@@ -144,7 +139,7 @@ int main(int argc, char** argv)
 		err(1, "open /dev/mapper/control");
 
 	if      (argc == 4 && !strcmp(argv[1], "open"))
-		cmd_open(argc - 1, argv + 1);
+		dm_open(argv[2], argv[3]);
 	else if (argc == 3 && !strcmp(argv[1], "close"))
 		dm_close(argv[2]);
 	else
