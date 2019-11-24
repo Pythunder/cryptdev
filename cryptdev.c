@@ -115,20 +115,16 @@ static void cmd_open(int argc, char** argv)
 	mknod(dev, S_IFBLK | 0600, dm.io.dev);
 }
 
-static void cmd_close(int argc, char** argv)
+static void dm_close(const char *name)
 {
-	struct dm_crypt dm;
 	char path[256];
-	const char *name = argv[1];
-
-	if (argc < 2)
-		errx(1, "Usage: %s NAME", argv[0]);
+	struct dm_crypt dm;
 
 	dm_init(&dm, name);
 	if (ioctl(control_fd, DM_DEV_REMOVE, &dm))
 		err(1, "ioctl(DM_DEV_REMOVE)");
 
-	snprintf(path, sizeof(path) - 1, "/dev/mapper/%s", name);
+	snprintf(path, sizeof(path), "/dev/mapper/%s", name);
 	unlink(path);
 }
 
@@ -150,7 +146,7 @@ int main(int argc, char** argv)
 	if      (argc == 4 && !strcmp(argv[1], "open"))
 		cmd_open(argc - 1, argv + 1);
 	else if (argc == 3 && !strcmp(argv[1], "close"))
-		cmd_close(argc - 1, argv + 1);
+		dm_close(argv[2]);
 	else
 		usage();
 }
