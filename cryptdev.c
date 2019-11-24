@@ -132,19 +132,25 @@ static void cmd_close(int argc, char** argv)
 	unlink(path);
 }
 
+void usage(void)
+{
+	extern char *__progname;
+	fprintf(stderr, "Usage: %s <action> <action-specific>\n\n"
+			"<action> is one of:\n"
+			"\topen <device> <name>\n"
+			"\tclose <name>\n", __progname);
+	exit(1);
+}
+
 int main(int argc, char** argv)
 {
-	if (argc < 2)
-		errx(1, "usage: %s CMD [ARG]...", argv[0]);
-
         if ((control_fd = open("/dev/mapper/control", O_RDWR)) < 0)
 		err(1, "open /dev/mapper/control");
 
-	--argc, ++argv;
-	if (!strcmp(argv[0], "open"))
-		cmd_open(argc, argv);
-	else if(!strcmp(argv[0], "close"))
-		cmd_close(argc, argv);
+	if      (argc == 4 && !strcmp(argv[1], "open"))
+		cmd_open(argc - 1, argv + 1);
+	else if (argc == 3 && !strcmp(argv[1], "close"))
+		cmd_close(argc - 1, argv + 1);
 	else
-		errx(1, "unknown command: %s", argv[0]);
+		usage();
 }
