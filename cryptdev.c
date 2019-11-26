@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #include <err.h>
 #include <fcntl.h>
 #include <stdio.h>
@@ -22,12 +23,14 @@ static int control_fd;
 
 static void hash_pass(const char *str, char *out)
 {
-        unsigned char hash[SHA256_DIGEST_LENGTH];
-        SHA256((unsigned char*)str, strlen(str), hash);
-        for(unsigned i = 0; i < sizeof(hash); i++) {
-                sprintf(out, "%02x", hash[i]);
-                out += 2;
-        }
+	unsigned i;
+	unsigned char hash[SHA256_DIGEST_LENGTH];
+
+	SHA256((unsigned char*)str, strlen(str), hash);
+	for(i = 0; i < sizeof(hash); i++) {
+		sprintf(out, "%02x", hash[i]);
+		out += 2;
+	}
 	*out = '\0';
 	explicit_bzero(hash, sizeof(hash));
 }
@@ -57,6 +60,7 @@ static void get_blk_size(const char* path, uint64_t *size)
 
 static void read_pass(char *buf, size_t size)
 {
+	ssize_t sz;
 	struct termios newtios, oldtios;
 	tcgetattr(0, &oldtios);
 	newtios = oldtios;
@@ -64,7 +68,7 @@ static void read_pass(char *buf, size_t size)
 	tcsetattr(0, TCSAFLUSH, &newtios);
 
 	write(1, "Password: ", 10);
-	ssize_t sz = read(0, buf, size-1);
+	sz = read(0, buf, size-1);
 	if (sz > 0) {
 		if (buf[sz-1] == '\n')
 			--sz;
