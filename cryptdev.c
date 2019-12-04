@@ -82,11 +82,13 @@ static void read_pass(char *buf, size_t size)
 
 static void dm_open(const char *path, const char *name)
 {
-	uint64_t size = 0;
-	char dev[256], passwd[256], hash[65];
+	uint64_t size;
 	struct dm_crypt dm;
+	char buf[256];
 
 	get_blk_size(path, &size);
+	read_pass(buf, sizeof(buf));
+	hash_pass(buf, buf);
 
 	dm_init(&dm, name);
 	if (ioctl(control_fd, DM_DEV_CREATE, &dm) == -1)
@@ -94,14 +96,10 @@ static void dm_open(const char *path, const char *name)
 
 	dm_init(&dm, name);
 	dm.io.target_count = 1;
-	dm.spec.sector_start = 0;
 	dm.spec.length = size;
-	strncpy(dm.spec.target_type, "crypt", sizeof(dm.spec.target_type) - 1);
+	snprintf(dm.spec.target_type, sizeof(dm.spec.target_type), "crypt");
+	snprintf(dm.param, sizeof(dm.param), "aes-xts-plain64 %s 0 %s 0", buf, path);
 
-	read_pass(passwd, sizeof(passwd));
-	hash_pass(passwd, hash);
-
-	snprintf(dm.param, sizeof(dm.param), "aes-xts-plain64 %s 0 %s 0", hash, path);
 	if (ioctl(control_fd, DM_TABLE_LOAD, &dm) < 0)
 		err(1, "ioctl(DM_TABLE_LOAD)");
 
@@ -109,9 +107,8 @@ static void dm_open(const char *path, const char *name)
 	if (ioctl(control_fd, DM_DEV_SUSPEND, &dm))
 		err(1, "ioctl(DM_DEV_SUSPEND)");
 
-	/* Create device in /dev/mapper/ */
-	snprintf(dev, sizeof(dev) - 1, "/dev/mapper/%s", name);
-	mknod(dev, S_IFBLK | 0600, dm.io.dev);
+	snprintf(buf, sizeof(buf), "/dev/mapper/%s", name);
+	mknod(buf, S_IFBLK | 0600, dm.io.dev);
 }
 
 static void dm_close(const char *name)
