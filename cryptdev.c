@@ -62,22 +62,23 @@ static void read_pass(char *buf, size_t size)
 {
 	ssize_t sz;
 	struct termios newtios, oldtios;
+
 	tcgetattr(0, &oldtios);
 	newtios = oldtios;
 	newtios.c_lflag &= ~(ECHO | ISIG);
-	tcsetattr(0, TCSAFLUSH, &newtios);
 
+	tcsetattr(0, TCSAFLUSH, &newtios);
 	write(1, "Password: ", 10);
-	sz = read(0, buf, size-1);
+	sz = read(0, buf, size - 1);
+	write(1, "\n", 1);
+	tcsetattr(0, TCSAFLUSH, &oldtios);
+
 	if (sz > 0) {
 		if (buf[sz-1] == '\n')
 			--sz;
 		buf[sz] = '\0';
 	} else
-		buf[0] = '\0';
-	write(1, "\n", 1);
-
-	tcsetattr(0, TCSAFLUSH, &oldtios);
+		exit(0);
 }
 
 static void dm_open(const char *path, const char *name)
