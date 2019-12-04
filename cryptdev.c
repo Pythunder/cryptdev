@@ -23,15 +23,17 @@ static int control_fd;
 
 static void hash_pass(const char *str, char *out)
 {
-	unsigned i;
+	unsigned int i, j, n;
 	unsigned char hash[SHA256_DIGEST_LENGTH];
 
 	SHA256((unsigned char*)str, strlen(str), hash);
-	for(i = 0; i < sizeof(hash); i++) {
-		sprintf(out, "%02x", hash[i]);
-		out += 2;
+	for(i = 0, j = 0; i < sizeof(hash); i++) {
+		n = (hash[i] & 0xf0) >> 4;
+		out[j++] = n + (n > 9 ? 'a' - 10 : '0');
+		n = (hash[i] & 0x0f);
+		out[j++] = n + (n > 9 ? 'a' - 10 : '0');
 	}
-	*out = '\0';
+	out[j] = '\0';
 	explicit_bzero(hash, sizeof(hash));
 }
 
