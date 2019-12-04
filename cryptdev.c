@@ -92,7 +92,7 @@ static void dm_open(const char *path, const char *name)
 	hash_pass(buf, buf);
 
 	dm_init(&dm, name);
-	if (ioctl(control_fd, DM_DEV_CREATE, &dm) == -1)
+	if (ioctl(control_fd, DM_DEV_CREATE, &dm) < 0)
 		err(1, "ioctl(DM_DEV_CREATE)");
 
 	dm_init(&dm, name);
@@ -105,7 +105,7 @@ static void dm_open(const char *path, const char *name)
 		err(1, "ioctl(DM_TABLE_LOAD)");
 
 	dm_init(&dm, name);
-	if (ioctl(control_fd, DM_DEV_SUSPEND, &dm))
+	if (ioctl(control_fd, DM_DEV_SUSPEND, &dm) < 0)
 		err(1, "ioctl(DM_DEV_SUSPEND)");
 
 	snprintf(buf, sizeof(buf), "/dev/mapper/%s", name);
@@ -118,7 +118,7 @@ static void dm_close(const char *name)
 	struct dm_crypt dm;
 
 	dm_init(&dm, name);
-	if (ioctl(control_fd, DM_DEV_REMOVE, &dm))
+	if (ioctl(control_fd, DM_DEV_REMOVE, &dm) < 0)
 		err(1, "ioctl(DM_DEV_REMOVE)");
 
 	snprintf(path, sizeof(path), "/dev/mapper/%s", name);
