@@ -37,29 +37,6 @@ static void hash_pass(const char *str, char *out)
 	explicit_bzero(hash, sizeof(hash));
 }
 
-static void dm_init(struct dm_crypt *dm, const char *dm_name)
-{
-	memset(dm, 0, sizeof(*dm));
-	dm->io.data_size = sizeof(*dm);
-	dm->io.data_start = sizeof(dm->io);
-	dm->io.version[0] = DM_VERSION_MAJOR;
-	dm->io.version[1] = DM_VERSION_MINOR;
-	dm->io.version[2] = DM_VERSION_PATCHLEVEL;
-	strncpy(dm->io.name, dm_name, sizeof(dm->io.name) - 1);
-}
-
-static void get_blk_size(const char* path, uint64_t *size)
-{
-	int fd;
-
-	if ((fd = open(path, O_RDONLY)) < 0)
-		err(1, "open %s", path);
-
-	if (ioctl(fd, BLKGETSIZE, size) < 0)
-		err(1, "ioctl(BLKGETSIZE)");
-	close(fd);
-}
-
 static void read_pass(char *buf, size_t size)
 {
 	ssize_t sz;
@@ -81,6 +58,29 @@ static void read_pass(char *buf, size_t size)
 		buf[sz] = '\0';
 	} else
 		exit(0);
+}
+
+static void dm_init(struct dm_crypt *dm, const char *dm_name)
+{
+	memset(dm, 0, sizeof(*dm));
+	dm->io.data_size = sizeof(*dm);
+	dm->io.data_start = sizeof(dm->io);
+	dm->io.version[0] = DM_VERSION_MAJOR;
+	dm->io.version[1] = DM_VERSION_MINOR;
+	dm->io.version[2] = DM_VERSION_PATCHLEVEL;
+	strncpy(dm->io.name, dm_name, sizeof(dm->io.name) - 1);
+}
+
+static void get_blk_size(const char* path, uint64_t *size)
+{
+	int fd;
+
+	if ((fd = open(path, O_RDONLY)) < 0)
+		err(1, "open %s", path);
+
+	if (ioctl(fd, BLKGETSIZE, size) < 0)
+		err(1, "ioctl(BLKGETSIZE)");
+	close(fd);
 }
 
 static void dm_open(const char *path, const char *name)
