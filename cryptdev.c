@@ -85,9 +85,9 @@ static void get_blk_size(const char* path, uint64_t *size)
 
 static void dm_open(const char *path, const char *name)
 {
+	char buf[256];
 	uint64_t size;
 	struct dm_crypt dm;
-	char buf[256];
 
 	get_blk_size(path, &size);
 	read_pass(buf, sizeof(buf));
@@ -116,15 +116,15 @@ static void dm_open(const char *path, const char *name)
 
 static void dm_close(const char *name)
 {
-	char path[256];
+	char buf[256];
 	struct dm_crypt dm;
 
 	dm_init(&dm, name);
 	if (ioctl(control_fd, DM_DEV_REMOVE, &dm) < 0)
 		err(1, "ioctl(DM_DEV_REMOVE)");
 
-	snprintf(path, sizeof(path), "/dev/mapper/%s", name);
-	unlink(path);
+	snprintf(buf, sizeof(buf), "/dev/mapper/%s", name);
+	unlink(buf);
 }
 
 void usage(void)
