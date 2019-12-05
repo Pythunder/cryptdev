@@ -85,8 +85,8 @@ static void get_blk_size(const char* path, uint64_t *size)
 
 static void dm_open(const char *path, const char *name)
 {
-	char buf[256];
 	uint64_t size;
+	char buf[256];
 	struct dm_crypt dm;
 
 	get_blk_size(path, &size);
