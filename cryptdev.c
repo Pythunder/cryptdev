@@ -12,12 +12,6 @@
 #include <linux/fs.h>
 #include <linux/dm-ioctl.h>
 
-#define ELEMS(arr) (sizeof(arr) / sizeof(arr[0]))
-#define DM_CRYPT_BUF_SIZE 4096
-#define MAX_PASS_LEN 128
-#define DM_CRYPT_ALG "aes-xts-plain64"
-#define DM_CONTROL_PATH "/dev/" DM_DIR "/" DM_CONTROL_NODE
-
 #define KEYSIZE ((SHA256_DIGEST_LENGTH*2)+1) /* SHA sum in hex + NUL */
 
 struct dm_crypt {
@@ -78,7 +72,7 @@ read_pass(char* hash)
 	tcsetattr(0, TCSAFLUSH, &newtios);
 
 	write(1, "Password: ", 10);
-	char buf[MAX_PASS_LEN] = {0};
+	char buf[256] = {0};
 	ssize_t sz = read(0, buf, sizeof(buf));
 	if (sz > 0) {
 		if(buf[sz-1] == '\n')
@@ -122,7 +116,7 @@ cmd_open(int argc, char** argv)
 	if(read_pass(pass) == -1 || *pass == 0)
 		exit(1);
 
-	snprintf(dm.param, sizeof(dm.param), DM_CRYPT_ALG " %s 0 %s 0", pass, path);
+	snprintf(dm.param, sizeof(dm.param), "aes-xts-plain64 %s 0 %s 0", pass, path);
 	ret = ioctl(control_fd, DM_TABLE_LOAD, &dm);
 
 	/* Destroy key */
@@ -165,8 +159,8 @@ main(int argc, char** argv)
 	if (argc < 2)
 		errx(1, "usage: %s CMD [ARG]...", argv[0]);
 
-        if ((control_fd = open(DM_CONTROL_PATH, O_RDWR)) < 0)
-		err(1, "open " DM_CONTROL_PATH);
+        if ((control_fd = open("/dev/mapper/control", O_RDWR)) < 0)
+		err(1, "open /dev/mapper/control");
 
 	--argc, ++argv;
 	if (!strcmp(argv[0], "open"))
