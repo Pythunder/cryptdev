@@ -101,11 +101,11 @@ static void
 cmd_open(int argc, char** argv)
 {
 	if (argc < 3)
-		errx(1, "Usage: %s NAME DEV", argv[0]);
+		errx(1, "Usage: %s DEV NAME", argv[0]);
 
 	__u64 size = 0;
-	const char* name = argv[1];
-	const char* path = argv[2];
+	const char* path = argv[1];
+	const char* name = argv[2];
 	char buf[DM_CRYPT_BUF_SIZE];
 	struct dm_ioctl* io = (struct dm_ioctl *) buf;
 	struct dm_target_spec* spec = (struct dm_target_spec*) &buf[sizeof(*io)];
