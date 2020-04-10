@@ -25,6 +25,12 @@ struct cmd_func {
 	void (*func)(int,char**);
 };
 
+struct dm_crypt {
+	struct dm_ioctl io;
+	struct dm_target_spec spec;
+	char param[1024];
+};
+
 static void cmd_open(int argc, char** argv);
 static void cmd_close(int argc, char** argv);
 
@@ -57,6 +63,18 @@ ioctl_init(struct dm_ioctl* io, size_t size, const char* name)
 	io->version[1] = DM_VERSION_MINOR;
 	io->version[2] = DM_VERSION_PATCHLEVEL;
 	strncpy(io->name, name, sizeof(io->name)-1);
+}
+
+static void
+dm_init(struct dm_crypt *dm, const char *dm_name)
+{
+	memset(dm, 0, sizeof(*dm));
+	dm->io.data_size = sizeof(*dm);
+	dm->io.data_start = sizeof(dm->io);
+	dm->io.version[0] = DM_VERSION_MAJOR;
+	dm->io.version[1] = DM_VERSION_MINOR;
+	dm->io.version[2] = DM_VERSION_PATCHLEVEL;
+	strncpy(dm->io.name, dm_name, sizeof(dm->io.name) - 1);
 }
 
 static int
@@ -152,21 +170,19 @@ cmd_open(int argc, char** argv)
 static void
 cmd_close(int argc, char** argv)
 {
+	struct dm_crypt dm;
+	char path[256];
+	const char *name = argv[1];
+
 	if (argc < 2)
 		errx(1, "Usage: %s NAME", argv[0]);
 
-        const char* name = argv[1];
-        char buf[DM_CRYPT_BUF_SIZE];
-        struct dm_ioctl* io = (struct dm_ioctl *)buf;
-
-	ioctl_init(io, sizeof(buf), name);
-	if (ioctl(control_fd, DM_DEV_REMOVE, io))
+	dm_init(&dm, name);
+	if (ioctl(control_fd, DM_DEV_REMOVE, &dm))
 		err(1, "ioctl(DM_DEV_REMOVE)");
 
-
-	char dev[256] = {0};
-	snprintf(dev, sizeof(dev)-1, "/dev/" DM_DIR "/%s", name);
-	unlink(dev);
+	snprintf(path, sizeof(path) - 1, "/dev/mapper/%s", name);
+	unlink(path);
 }
 
 int
