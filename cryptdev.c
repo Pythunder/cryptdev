@@ -1,4 +1,3 @@
-#define _GNU_SOURCE
 #include <err.h>
 #include <fcntl.h>
 #include <stdio.h>
@@ -13,139 +12,188 @@
 #include <linux/fs.h>
 #include <linux/dm-ioctl.h>
 
-struct dm_crypt {
-	struct dm_ioctl io;
-	struct dm_target_spec spec;
-	char param[1024];
+#define ELEMS(arr) (sizeof(arr) / sizeof(arr[0]))
+#define DM_CRYPT_BUF_SIZE 4096
+#define MAX_PASS_LEN 128
+#define DM_CRYPT_ALG "aes-xts-plain64"
+#define DM_CONTROL_PATH "/dev/" DM_DIR "/" DM_CONTROL_NODE
+
+#define KEYSIZE ((SHA256_DIGEST_LENGTH*2)+1) /* SHA sum in hex + NUL */
+
+struct cmd_func {
+	const char* name;
+	void (*func)(int,char**);
 };
 
-static int control_fd;
+static void cmd_open(int argc, char** argv);
+static void cmd_close(int argc, char** argv);
 
-static void hash_pass(const char *str, char *out)
+static int control_fd = -1;
+static const struct cmd_func cmd_list[] = {
+        {"open", cmd_open},
+        {"close", cmd_close},
+};
+
+static void
+pass_to_masterkey(const char* str, size_t len, char* out)
 {
-	unsigned int i, j, n;
-	unsigned char hash[SHA256_DIGEST_LENGTH];
-
-	SHA256((unsigned char*)str, strlen(str), hash);
-	for(i = 0, j = 0; i < sizeof(hash); i++) {
-		n = (hash[i] & 0xf0) >> 4;
-		out[j++] = n + (n > 9 ? 'a' - 10 : '0');
-		n = (hash[i] & 0x0f);
-		out[j++] = n + (n > 9 ? 'a' - 10 : '0');
-	}
-	out[j] = '\0';
+        unsigned char hash[SHA256_DIGEST_LENGTH];
+        SHA256((unsigned char*)str, len, hash);
+        for(unsigned i = 0; i < sizeof(hash); i++) {
+                sprintf(out, "%02x", hash[i]);
+                out += 2;
+        }
+	*out = '\0';
 	explicit_bzero(hash, sizeof(hash));
 }
 
-static void read_pass(char *buf, size_t size)
+static void
+ioctl_init(struct dm_ioctl* io, size_t size, const char* name)
 {
-	ssize_t sz;
-	struct termios newtios, oldtios;
-
-	tcgetattr(0, &oldtios);
-	newtios = oldtios;
-	newtios.c_lflag &= ~(ECHO | ISIG);
-
-	tcsetattr(0, TCSAFLUSH, &newtios);
-	write(1, "Password: ", 10);
-	sz = read(0, buf, size - 1);
-	write(1, "\n", 1);
-	tcsetattr(0, TCSAFLUSH, &oldtios);
-
-	if (sz > 0) {
-		if (buf[sz-1] == '\n')
-			--sz;
-		buf[sz] = '\0';
-	} else
-		exit(0);
+	memset(io, 0, size);
+	io->data_size = size;
+	io->data_start = sizeof(*io);
+	io->version[0] = DM_VERSION_MAJOR;
+	io->version[1] = DM_VERSION_MINOR;
+	io->version[2] = DM_VERSION_PATCHLEVEL;
+	strncpy(io->name, name, sizeof(io->name)-1);
 }
 
-static void dm_init(struct dm_crypt *dm, const char *dm_name)
+static int
+get_blk_size(const char* path, __u64* size)
 {
-	memset(dm, 0, sizeof(*dm));
-	dm->io.data_size = sizeof(*dm);
-	dm->io.data_start = sizeof(dm->io);
-	dm->io.version[0] = DM_VERSION_MAJOR;
-	dm->io.version[1] = DM_VERSION_MINOR;
-	dm->io.version[2] = DM_VERSION_PATCHLEVEL;
-	strncpy(dm->io.name, dm_name, sizeof(dm->io.name) - 1);
-}
+	int ret = 0;
+	int fd = open(path, O_RDONLY);
+	if (fd == -1)
+		return -1;
 
-static void get_blk_size(const char* path, uint64_t *size)
-{
-	int fd;
-
-	if ((fd = open(path, O_RDONLY)) < 0)
-		err(1, "open %s", path);
-
-	if (ioctl(fd, BLKGETSIZE, size) < 0)
-		err(1, "ioctl(BLKGETSIZE)");
+	ret = ioctl(fd, BLKGETSIZE64, size);
 	close(fd);
+
+	return ret;
 }
 
-static void dm_open(const char *path, const char *name)
+static int
+read_pass(char* hash)
 {
-	uint64_t size;
-	char buf[256];
-	struct dm_crypt dm;
+	struct termios newtios, oldtios;
+	if (tcgetattr(0, &oldtios))
+		return -1;
+	newtios = oldtios;
+	newtios.c_lflag &= ~ECHO;
 
-	get_blk_size(path, &size);
-	read_pass(buf, sizeof(buf));
-	hash_pass(buf, buf);
+	if (tcsetattr(0, TCSADRAIN, &newtios))
+		return -1;
 
-	dm_init(&dm, name);
-	if (ioctl(control_fd, DM_DEV_CREATE, &dm) < 0)
+	char buf[MAX_PASS_LEN] = {0};
+	ssize_t sz = read(0, buf, sizeof(buf));
+	if (sz > 0) {
+		if(buf[sz-1] == '\n')
+			--sz;
+		pass_to_masterkey(buf, sz, hash);
+	}
+	explicit_bzero(buf, sizeof(buf));
+
+	if (tcsetattr(0, TCSAFLUSH, &oldtios))
+		return -1;
+
+	return sz;
+}
+
+static void
+cmd_open(int argc, char** argv)
+{
+	if (argc < 3)
+		errx(1, "Usage: %s NAME DEV", argv[0]);
+
+	__u64 size = 0;
+	const char* name = argv[1];
+	const char* path = argv[2];
+	char buf[DM_CRYPT_BUF_SIZE];
+	struct dm_ioctl* io = (struct dm_ioctl *) buf;
+	struct dm_target_spec* spec = (struct dm_target_spec*) &buf[sizeof(*io)];
+	char* params = buf + sizeof(*io) + sizeof(*spec);
+
+	if (get_blk_size(path, &size))
+		err(1, "failed to get size of %s", path);
+	size >>= 9; /* Number of 512 byte blocks */
+
+	ioctl_init(io, sizeof(buf), name);
+	if (ioctl(control_fd, DM_DEV_CREATE, io) == -1)
 		err(1, "ioctl(DM_DEV_CREATE)");
 
-	dm_init(&dm, name);
-	dm.io.target_count = 1;
-	dm.spec.length = size;
-	snprintf(dm.spec.target_type, sizeof(dm.spec.target_type), "crypt");
-	snprintf(dm.param, sizeof(dm.param), "aes-xts-plain64 %s 0 %s 0", buf, path);
+	ioctl_init(io, sizeof(buf), name);
+	io->target_count = 1;
+	spec->sector_start = 0;
+	spec->length = size;
+	strcpy(spec->target_type, "crypt");
 
-	if (ioctl(control_fd, DM_TABLE_LOAD, &dm) < 0)
+	char pass[KEYSIZE] = {0};
+	if(read_pass(pass) == -1 || *pass == 0)
+		exit(1);
+
+	sprintf(params, DM_CRYPT_ALG " %s 0 %s 0", pass, path);
+	int ret = ioctl(control_fd, DM_TABLE_LOAD, io);
+
+	/* Destroy key */
+	explicit_bzero(pass, sizeof(pass));
+	explicit_bzero(params, sizeof(params));
+
+	if (ret)
 		err(1, "ioctl(DM_TABLE_LOAD)");
 
-	dm_init(&dm, name);
-	if (ioctl(control_fd, DM_DEV_SUSPEND, &dm) < 0)
+	ioctl_init(io, sizeof(buf), name);
+	if (ioctl(control_fd, DM_DEV_SUSPEND, io))
 		err(1, "ioctl(DM_DEV_SUSPEND)");
 
-	snprintf(buf, sizeof(buf), "/dev/mapper/%s", name);
-	mknod(buf, S_IFBLK | 0600, dm.io.dev);
+	/* Create device in /dev/mapper/ */
+	char dev[256] = {0};
+	snprintf(dev, sizeof(dev)-1, "/dev/" DM_DIR "/%s", name);
+	mknod(dev, S_IFBLK | 0600, io->dev);
 }
 
-static void dm_close(const char *name)
+static void
+cmd_close(int argc, char** argv)
 {
-	char buf[256];
-	struct dm_crypt dm;
+	if (argc < 2)
+		errx(1, "Usage: %s NAME", argv[0]);
 
-	dm_init(&dm, name);
-	if (ioctl(control_fd, DM_DEV_REMOVE, &dm) < 0)
+        const char* name = argv[1];
+        char buf[DM_CRYPT_BUF_SIZE];
+        struct dm_ioctl* io = (struct dm_ioctl *)buf;
+ 
+	ioctl_init(io, sizeof(buf), name);
+	if (ioctl(control_fd, DM_DEV_REMOVE, io))
 		err(1, "ioctl(DM_DEV_REMOVE)");
 
-	snprintf(buf, sizeof(buf), "/dev/mapper/%s", name);
-	unlink(buf);
+	
+	char dev[256] = {0};
+	snprintf(dev, sizeof(dev)-1, "/dev/" DM_DIR "/%s", name);
+	unlink(dev);
 }
 
-void usage(void)
+int
+main(int argc, char** argv)
 {
-	extern char *__progname;
-	fprintf(stderr, "Usage: %s <action> <action-specific>\n\n"
-			"<action> is one of:\n"
-			"\topen <device> <name>\n"
-			"\tclose <name>\n", __progname);
-	exit(1);
-}
+	if (argc < 2)
+		errx(1, "Usage: %s CMD [ARG]...", argv[0]);
 
-int main(int argc, char** argv)
-{
-        if ((control_fd = open("/dev/mapper/control", O_RDWR)) < 0)
-		err(1, "open /dev/mapper/control");
+	struct cmd_func cmd = {0};
+	for (unsigned i = 0; i < ELEMS(cmd_list); i++) {
+		if(strcmp(argv[1], cmd_list[i].name) == 0)
+		{
+			cmd = cmd_list[i];
+			break;
+		}
+	}
+	if (!cmd.func)
+		errx(1, "%s: no such command", argv[1]);
 
-	if      (argc == 4 && !strcmp(argv[1], "open"))
-		dm_open(argv[2], argv[3]);
-	else if (argc == 3 && !strcmp(argv[1], "close"))
-		dm_close(argv[2]);
-	else
-		usage();
+        control_fd = open(DM_CONTROL_PATH, O_RDWR);
+        if (control_fd == -1)
+                err(1, "open " DM_CONTROL_PATH);
+
+	cmd.func(argc-1, &argv[1]);
+	close(control_fd);
+	return 0;
 }
